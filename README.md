@@ -14,7 +14,7 @@ unsaid cut talk.mp4 --max-pause 0.6  # ...and tighten long pauses
 ## Install
 
 ```bash
-uv tool install git+https://github.com/<you>/unsaid   # or: pipx install ...
+uv tool install git+https://github.com/Necromancervbh/unsaid   # or: pipx install ...
 ```
 
 That's all you need. ffmpeg comes bundled through `imageio-ffmpeg`, and if an `ffmpeg` is on your `PATH` it's used instead. The Whisper model downloads on first run. The default `small` model is about 480 MB.
