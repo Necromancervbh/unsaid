@@ -4,7 +4,7 @@
 
 unsaid transcribes your video on your own machine. You delete words from the transcript and they're gone from the video. Filler words go in one command. No account, no API key, no upload.
 
-<!-- TODO: hero GIF: delete a sentence in the script -> the video cuts -->
+![Deleting a sentence from talk.unsaid.txt and running unsaid cut: the sentence and the filler words disappear from the video, which goes from 30.7s to 21.5s](docs/demo.gif)
 
 ```bash
 unsaid cut talk.mp4                  # remove "um", "uh", "hmm" -> talk.unsaid.mp4
@@ -68,6 +68,8 @@ uv venv && uv pip install -e ".[dev]"
 ```
 
 The tests render real video through ffmpeg but don't need a Whisper model.
+
+The GIF at the top is drawn by `scripts/make_demo_gif.py` from a real `unsaid cut` run: its transcript, cut plan, waveform and output.
 
 ## Roadmap
 
