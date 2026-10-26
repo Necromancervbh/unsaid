@@ -1,0 +1,339 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>unsaid</title>
+<style>
+:root {
+  --bg: #ffffff; --panel: #f6f8fa; --border: #d0d7de; --text: #1f2328; --dim: #656d76;
+  --accent: #0969da; --on-accent: #ffffff; --now: #ddf4ff;
+  --cut: #cf222e; --cut-bg: #ffebe9; --filler: #bf8700; --ok: #1a7f37;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0d1117; --panel: #161b22; --border: #30363d; --text: #e6edf3; --dim: #7d8590;
+    --accent: #58a6ff; --on-accent: #0d1117; --now: #1c3557;
+    --cut: #ff7b72; --cut-bg: #3a1d1f; --filler: #d29922; --ok: #3fb950;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--text); }
+body { font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+header {
+  position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 12px;
+  padding: 10px 20px; background: var(--bg); border-bottom: 1px solid var(--border);
+}
+.brand { font-weight: 650; letter-spacing: -0.01em; }
+.name { color: var(--dim); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.durations { margin-left: auto; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.durations .saved { color: var(--ok); margin-left: 6px; }
+button {
+  font: inherit; font-size: 14px; padding: 5px 12px; border-radius: 6px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--panel); color: var(--text);
+}
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
+button:disabled { opacity: 0.5; cursor: default; }
+main {
+  display: grid; grid-template-columns: minmax(300px, 42%) 1fr; gap: 32px;
+  max-width: 1400px; margin: 0 auto; padding: 24px 20px 80px;
+}
+.player { position: sticky; top: 76px; align-self: start; }
+video, audio { display: block; width: 100%; border-radius: 8px; }
+video { background: #000; }
+.toggles { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 12px; font-size: 14px; color: var(--dim); }
+.toggles label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.help { margin-top: 16px; font-size: 13px; color: var(--dim); line-height: 1.8; }
+kbd {
+  font: 12px ui-monospace, SFMono-Regular, Consolas, monospace; padding: 1px 5px;
+  border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 4px; background: var(--panel);
+}
+#transcript { font-size: 18px; line-height: 1.9; max-width: 72ch; }
+#transcript p { margin: 0 0 1.1em; }
+#transcript .stamp {
+  display: block; font: 12px ui-monospace, SFMono-Regular, Consolas, monospace; color: var(--dim);
+  user-select: none; margin-bottom: 2px;
+}
+.w { border-radius: 3px; cursor: text; }
+.w:hover { background: var(--panel); }
+.w.filler { text-decoration: underline dotted var(--filler) 2px; text-underline-offset: 5px; }
+.w.cut { color: var(--cut); background: var(--cut-bg); text-decoration: line-through var(--cut) 2px; }
+.w.now { background: var(--now); }
+.w.cut.now { outline: 2px solid var(--cut); }
+#toast {
+  position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); max-width: calc(100% - 32px);
+  padding: 10px 16px; border-radius: 8px; background: var(--text); color: var(--bg); font-size: 14px;
+  opacity: 0; pointer-events: none; transition: opacity 0.2s;
+}
+#toast.show { opacity: 1; }
+#toast.error { background: var(--cut); color: #fff; }
+@media (max-width: 860px) {
+  main { grid-template-columns: 1fr; gap: 20px; padding: 16px 16px 80px; }
+  .player { position: static; }
+  header { padding: 10px 16px; flex-wrap: wrap; }
+  .durations { margin-left: 0; order: 3; width: 100%; }
+}
+</style>
+</head>
+<body>
+<header>
+  <span class="brand">unsaid</span>
+  <span class="name" id="name"></span>
+  <span class="durations" id="durations"></span>
+  <button id="undo" title="Undo (Ctrl+Z)" disabled>Undo</button>
+  <button id="redo" title="Redo (Ctrl+Shift+Z)" disabled>Redo</button>
+  <button id="export" class="primary">Export</button>
+</header>
+<main>
+  <section class="player">
+    <div id="media-slot"></div>
+    <div class="toggles">
+      <label><input type="checkbox" id="skip" checked> Skip cuts while playing</label>
+      <label><input type="checkbox" id="fillers"> <span id="fillers-label">Cut filler words</span></label>
+    </div>
+    <div class="help">
+      Click a word to jump there.<br>
+      Select words and press <kbd>Delete</kbd> to cut them. Do it again to bring them back.<br>
+      <kbd>Space</kbd> play / pause &nbsp; <kbd>Ctrl</kbd>+<kbd>Z</kbd> undo &nbsp;
+      <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> redo
+    </div>
+  </section>
+  <section id="transcript" aria-label="Transcript"></section>
+</main>
+<div id="toast" role="status"></div>
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+let words = [], fillers = new Set(), removed = new Set(), keep = [], duration = 0, outputDuration = 0;
+let spans = [], media = null, undoStack = [], redoStack = [], current = -1, saveTimer = null, saving = Promise.resolve();
+
+function fmt(s) {
+  const t = Math.round(s * 10) / 10, m = Math.floor(t / 60);
+  return `${m}:${(t - m * 60).toFixed(1).padStart(4, "0")}`;
+}
+
+function toast(text, error = false) {
+  const t = $("toast");
+  t.textContent = text;
+  t.className = "show" + (error ? " error" : "");
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(() => (t.className = error ? "error" : ""), error ? 6000 : 3000);
+}
+
+async function api(path, body) {
+  const res = await fetch(path, body === undefined ? {} : {
+    method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || res.statusText);
+  return data;
+}
+
+function applyPlan(plan) {
+  keep = plan.keep;
+  outputDuration = plan.output_duration;
+  const saved = duration - outputDuration;
+  $("durations").innerHTML = `${fmt(duration)} &rarr; <b>${fmt(outputDuration)}</b>` +
+    (saved >= 0.05 ? `<span class="saved">&minus;${saved.toFixed(1)}s</span>` : "");
+}
+
+function buildTranscript() {
+  const root = $("transcript");
+  root.textContent = "";
+  if (!words.length) {
+    root.textContent = "No speech found in this file.";
+    return;
+  }
+  let p = null, count = 0;
+  words.forEach(([text, start], i) => {
+    const gap = i ? start - words[i - 1][2] : Infinity;
+    const sentenceEnd = i && /[.?!]$/.test(words[i - 1][0]);
+    // New paragraph at a long pause, or at a sentence end after a pause or a long run.
+    if (!p || gap > 2 || (sentenceEnd && (gap > 0.8 || count >= 45))) {
+      count = 0;
+      p = document.createElement("p");
+      const stamp = document.createElement("span");
+      stamp.className = "stamp";
+      stamp.textContent = fmt(start);
+      p.append(stamp);
+      root.append(p);
+    } else {
+      p.append(" ");
+    }
+    const span = document.createElement("span");
+    span.className = "w" + (fillers.has(i) ? " filler" : "");
+    span.dataset.i = i;
+    span.textContent = text;
+    p.append(span);
+    spans[i] = span;
+    count++;
+  });
+}
+
+function paint() {
+  spans.forEach((s, i) => s.classList.toggle("cut", removed.has(i)));
+  const cutFillers = [...fillers].filter((i) => removed.has(i)).length;
+  const box = $("fillers");
+  box.checked = fillers.size > 0 && cutFillers === fillers.size;
+  box.indeterminate = cutFillers > 0 && cutFillers < fillers.size;
+  box.disabled = fillers.size === 0;
+  $("fillers-label").textContent = `Cut filler words (${fillers.size})`;
+  $("undo").disabled = !undoStack.length;
+  $("redo").disabled = !redoStack.length;
+}
+
+function setRemoved(next, history = true) {
+  if (history) {
+    undoStack.push(new Set(removed));
+    redoStack = [];
+  }
+  removed = next;
+  paint();
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(save, 150);
+}
+
+function save() {
+  saving = api("/api/edit", {removed: [...removed]})
+    .then(applyPlan)
+    .catch((e) => toast(`Couldn't save the edit: ${e.message}`, true));
+  return saving;
+}
+
+function cut(indices, on) {
+  const next = new Set(removed);
+  indices.forEach((i) => (on ? next.add(i) : next.delete(i)));
+  setRemoved(next);
+}
+
+function selectedWords() {
+  const sel = getSelection();
+  if (!sel.rangeCount || sel.isCollapsed) return [];
+  const range = sel.getRangeAt(0);
+  return spans.filter((s) => range.intersectsNode(s)).map((s) => +s.dataset.i);
+}
+
+function step(stack, other) {
+  if (!stack.length) return;
+  other.push(new Set(removed));
+  setRemoved(stack.pop(), false);
+}
+
+function wordAt(t) {
+  let lo = 0, hi = words.length - 1, found = -1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (words[mid][1] <= t) { found = mid; lo = mid + 1; } else hi = mid - 1;
+  }
+  return found >= 0 && t < words[found][2] + 0.25 ? found : -1;
+}
+
+// Runs every animation frame for smooth word highlighting, and on every
+// timeupdate too: browsers stop animation frames in hidden tabs, and cuts must
+// still be skipped there.
+function tick() {
+  sync();
+  requestAnimationFrame(tick);
+}
+
+function sync() {
+  if (media) {
+    let t = media.currentTime;
+    if (!media.paused && $("skip").checked && keep.length) {
+      const next = keep.find(([, e]) => e > t + 0.001);
+      if (!next) {
+        media.pause();
+      } else if (t < next[0] - 0.02) {
+        media.currentTime = t = next[0];
+      }
+    }
+    const i = wordAt(t);
+    if (i !== current) {
+      if (current >= 0) spans[current].classList.remove("now");
+      if (i >= 0) {
+        spans[i].classList.add("now");
+        if (!media.paused) {
+          const r = spans[i].getBoundingClientRect();
+          if (r.top < 80 || r.bottom > innerHeight - 40) spans[i].scrollIntoView({block: "center", behavior: "smooth"});
+        }
+      }
+      current = i;
+    }
+  }
+}
+
+document.addEventListener("keydown", (e) => {
+  if (e.target.closest("input, textarea, select")) return;
+  const mod = e.ctrlKey || e.metaKey;
+  if (e.key === "Delete" || e.key === "Backspace") {
+    const indices = selectedWords();
+    if (!indices.length) return;
+    e.preventDefault();
+    cut(indices, !indices.every((i) => removed.has(i)));
+    getSelection().removeAllRanges();
+  } else if (e.key === " " && !e.target.closest("button")) {
+    e.preventDefault();
+    if (media) media.paused ? media.play() : media.pause();
+  } else if (mod && e.key.toLowerCase() === "z") {
+    e.preventDefault();
+    e.shiftKey ? step(redoStack, undoStack) : step(undoStack, redoStack);
+  } else if (mod && e.key.toLowerCase() === "y") {
+    e.preventDefault();
+    step(redoStack, undoStack);
+  }
+});
+
+$("transcript").addEventListener("click", (e) => {
+  const span = e.target.closest(".w");
+  if (!span || !media || !getSelection().isCollapsed) return;
+  media.currentTime = words[+span.dataset.i][1];
+});
+
+$("fillers").addEventListener("change", (e) => cut([...fillers], e.target.checked));
+$("undo").addEventListener("click", () => step(undoStack, redoStack));
+$("redo").addEventListener("click", () => step(redoStack, undoStack));
+
+$("export").addEventListener("click", async () => {
+  const button = $("export");
+  button.disabled = true;
+  button.textContent = "Rendering…";
+  try {
+    clearTimeout(saveTimer);
+    await save();
+    const result = await api("/api/export", {});
+    toast(`Saved ${result.output} (${fmt(result.output_duration)})`);
+  } catch (e) {
+    toast(`Export failed: ${e.message}`, true);
+  } finally {
+    button.disabled = false;
+    button.textContent = "Export";
+  }
+});
+
+(async () => {
+  try {
+    const state = await api("/api/state");
+    words = state.words;
+    duration = state.duration;
+    fillers = new Set(state.fillers);
+    removed = new Set(state.removed);
+    document.title = `${state.name} – unsaid`;
+    $("name").textContent = state.name;
+    $("export").title = `Render the edit to ${state.output}`;
+    media = document.createElement(state.has_video ? "video" : "audio");
+    media.controls = true;
+    media.preload = "auto";
+    media.src = "/media";
+    for (const event of ["timeupdate", "play", "seeked"]) media.addEventListener(event, sync);
+    $("media-slot").append(media);
+    buildTranscript();
+    applyPlan(state);
+    paint();
+    requestAnimationFrame(tick);
+  } catch (e) {
+    toast(`Couldn't load the transcript: ${e.message}`, true);
+  }
+})();
+</script>
+</body>
+</html>

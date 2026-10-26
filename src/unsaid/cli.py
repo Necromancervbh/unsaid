@@ -67,6 +67,18 @@ def cmd_cut(args) -> int:
     return 0
 
 
+def cmd_edit(args) -> int:
+    from .editor import Session, serve
+
+    t = _get_transcript(args)
+    output = args.output or default_output(args.input, probe(args.input).has_video)
+    if output.resolve() == args.input.resolve():
+        raise ValueError("output would overwrite the input")
+    session = Session(args.input, t, output, max_pause=args.max_pause, fillers=not args.no_fillers)
+    serve(session, port=args.port, open_browser=not args.no_browser, log=lambda m: print(m, file=sys.stderr))
+    return 0
+
+
 def _get_transcript(args, force: bool = False) -> Transcript:
     if not args.input.exists():
         raise FileNotFoundError(args.input)
@@ -114,6 +126,14 @@ def _parser() -> argparse.ArgumentParser:
     t = sub.add_parser("transcribe", parents=[asr], help="transcribe and write an editable script")
     t.add_argument("--force", action="store_true", help="re-transcribe even if a transcript exists")
     t.set_defaults(func=cmd_transcribe)
+
+    e = sub.add_parser("edit", parents=[asr], help="edit the transcript in your browser and export the cut")
+    e.add_argument("-o", "--output", type=Path, help="output file (default: <input>.unsaid.mp4)")
+    e.add_argument("--no-fillers", action="store_true", help="don't pre-select filler words for cutting")
+    e.add_argument("--max-pause", type=float, metavar="SECONDS", help="shorten pauses longer than this")
+    e.add_argument("--port", type=int, default=0, help="port to serve on (default: any free port)")
+    e.add_argument("--no-browser", action="store_true", help="print the editor's URL instead of opening it")
+    e.set_defaults(func=cmd_edit)
 
     c = sub.add_parser("cut", parents=[asr], help="remove fillers / deleted words and export")
     c.add_argument("-o", "--output", type=Path, help="output file (default: <input>.unsaid.mp4)")
