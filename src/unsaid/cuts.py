@@ -73,9 +73,18 @@ def plan_cuts(
     if kept[-1] < len(words) - 1:
         cuts.append((last.end + pad, words[-1].end))
 
+    # Speech whisper skipped has no words, so it looks like a pause. Never cut into it.
+    cuts = _subtract(cuts, transcript.unheard)
     cuts = _merge([(max(0.0, s), min(transcript.duration, e)) for s, e in cuts if e - s >= min_cut])
     return CutPlan(keep=_complement(cuts, transcript.duration), removed_words=set(removed),
                    duration=transcript.duration)
+
+
+def _subtract(cuts: list[Range], protected: list[Range]) -> list[Range]:
+    """The parts of each cut that don't overlap a protected range."""
+    for ps, pe in protected:
+        cuts = [piece for s, e in cuts for piece in ((s, min(e, ps)), (max(s, pe), e)) if piece[1] > piece[0]]
+    return cuts
 
 
 def _merge(ranges: list[Range]) -> list[Range]:

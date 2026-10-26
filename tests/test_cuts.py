@@ -45,3 +45,18 @@ def test_everything_removed():
 def test_tiny_cuts_are_skipped():
     t = make_transcript("a@0.0-0.5 uh@0.5-0.55 b@0.55-1.0", duration=1.0)
     assert plan_cuts(t, {1}).keep == [(0.0, 1.0)]
+
+
+def test_never_cuts_into_speech_whisper_skipped():
+    # Whisper heard nothing between "So" and "um", but 1.0-5.5s is speech.
+    t = make_transcript("So@0.5-0.9 um@6.0-6.3 yes.@6.6-7.0", duration=8.0)
+    t.unheard = [(1.0, 5.5)]
+    keep = plan_cuts(t, {1}).keep
+    assert any(s <= 1.0 and e >= 5.5 for s, e in keep)
+    assert keep == [(0.0, 5.5), (6.45, 8.0)]  # still cuts the "um" after it
+
+
+def test_max_pause_leaves_skipped_speech_alone():
+    t = make_transcript("a@0-0.5 b@5-5.5", duration=6.0)
+    t.unheard = [(1.0, 4.0)]
+    assert plan_cuts(t, set(), max_pause=0.5).keep == [(0.0, 0.75), (1.0, 4.0), (4.75, 6.0)]

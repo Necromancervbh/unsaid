@@ -34,6 +34,9 @@ class Transcript:
     language: str = ""
     model: str = ""
     source: dict = field(default_factory=dict)
+    # Stretches of speech whisper didn't transcribe: (start, end) seconds.
+    # Never cut inside them; they look like pauses but aren't.
+    unheard: list[tuple[float, float]] = field(default_factory=list)
 
     def to_text(self) -> str:
         """Plain text, one sentence per line, for editing in any text editor."""
@@ -58,7 +61,8 @@ class Transcript:
             raise ValueError(f"{path}: unsupported transcript format version {data.get('version')!r}")
         words = [Word(**w) for w in data["words"]]
         return cls(words=words, duration=data["duration"], language=data.get("language", ""),
-                   model=data.get("model", ""), source=data.get("source", {}))
+                   model=data.get("model", ""), source=data.get("source", {}),
+                   unheard=[(s, e) for s, e in data.get("unheard", [])])
 
 
 def source_fingerprint(media: Path) -> dict:

@@ -37,6 +37,10 @@ def cmd_transcribe(args) -> int:
 
 def cmd_cut(args) -> int:
     t = _get_transcript(args)
+    if t.unheard:
+        spans = ", ".join(f"{_fmt(s)}-{_fmt(e)}" for s, e in t.unheard)
+        print(f"note: whisper didn't transcribe some speech ({spans}); unsaid won't cut inside it",
+              file=sys.stderr)
     removed: set[int] = set()
     n_fillers = 0
     if not args.no_fillers:
