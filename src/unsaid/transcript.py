@@ -1,6 +1,7 @@
 """Word-level transcript model and its on-disk format."""
 from __future__ import annotations
 
+import base64
 import json
 import re
 from dataclasses import asdict, dataclass, field
@@ -8,6 +9,10 @@ from pathlib import Path
 
 FORMAT_VERSION = 1
 _PUNCT = re.compile(r"[^\w']+", re.UNICODE)
+
+# The loudness track: one byte per ENERGY_HOP seconds, 0 = -100 dB, 255 = 0 dB.
+ENERGY_HOP = 0.01
+ENERGY_STEPS_PER_DB = 2.55
 
 
 def normalize(token: str) -> str:
@@ -37,6 +42,11 @@ class Transcript:
     # Stretches of speech whisper didn't transcribe: (start, end) seconds.
     # Never cut inside them; they look like pauses but aren't.
     unheard: list[tuple[float, float]] = field(default_factory=list)
+    # Base64 loudness track (see ENERGY_HOP), so cuts can find the quiet between words.
+    energy: str = ""
+
+    def energy_frames(self) -> bytes:
+        return base64.b64decode(self.energy)
 
     def to_text(self) -> str:
         """Plain text, one sentence per line, for editing in any text editor."""
@@ -62,7 +72,7 @@ class Transcript:
         words = [Word(**w) for w in data["words"]]
         return cls(words=words, duration=data["duration"], language=data.get("language", ""),
                    model=data.get("model", ""), source=data.get("source", {}),
-                   unheard=[(s, e) for s, e in data.get("unheard", [])])
+                   unheard=[(s, e) for s, e in data.get("unheard", [])], energy=data.get("energy", ""))
 
 
 def source_fingerprint(media: Path) -> dict:

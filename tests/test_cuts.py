@@ -1,3 +1,5 @@
+import base64
+
 import pytest
 from conftest import make_transcript
 
@@ -60,3 +62,74 @@ def test_max_pause_leaves_skipped_speech_alone():
     t = make_transcript("a@0-0.5 b@5-5.5", duration=6.0)
     t.unheard = [(1.0, 4.0)]
     assert plan_cuts(t, set(), max_pause=0.5).keep == [(0.0, 0.75), (1.0, 4.0), (4.75, 6.0)]
+
+
+def with_energy(t, loud: list[tuple[float, float]]):
+    """Give a transcript a loudness track: speech in `loud`, near silence elsewhere."""
+    frames = bytearray([30] * int(t.duration / 0.01))
+    for s, e in loud:
+        frames[int(s / 0.01):int(e / 0.01)] = bytes([200]) * (int(e / 0.01) - int(s / 0.01))
+    t.energy = base64.b64encode(bytes(frames)).decode()
+    return t
+
+
+def test_cut_edges_follow_the_audio_when_timestamps_are_off():
+    # Modeled on a real clip: whisper ends "of" a little late and starts
+    # "Internet" 0.25 s late with zero length. The "uh" really sits at
+    # 1.40-1.62 and "Internet" starts at 1.70. Timestamps alone cut 1.46-1.91:
+    # half the "uh" stays and "Inter" is lost.
+    t = make_transcript("of@1.0-1.42 uh@1.42-1.75 Internet@1.95-1.95 interconnection.@1.95-3.0", duration=4.0)
+    with_energy(t, [(1.0, 1.30), (1.40, 1.62), (1.70, 3.0)])
+    (_, s), (e, _) = plan_cuts(t, {1}).keep
+    assert 1.30 <= s <= 1.40  # the whole "uh" goes...
+    assert 1.62 <= e <= 1.70 - 0.02  # ...and "Internet" keeps its start
+
+
+def test_words_running_together_keep_the_planned_edges():
+    # "uh" runs straight into "you", and "you" has a softer middle. That
+    # softer stretch is still speech, not a gap, so the edge stays put.
+    t = make_transcript("uh@1.0-1.3 you@1.3-1.8 have@1.8-2.0", duration=3.0)
+    planned = plan_cuts(t, {0}).keep
+    frames = bytearray([30] * 300)
+    frames[100:200] = bytes([237]) * 100  # about -7 dB
+    frames[140:146] = bytes([215]) * 6  # about -16 dB: within 6 dB of the window's quietest, but speech
+    t.energy = base64.b64encode(bytes(frames)).decode()
+    assert plan_cuts(t, {0}).keep == planned
+
+
+def test_brief_dip_inside_a_kept_word_is_not_a_gap():
+    # A 20 ms dip inside "on", before its middle, must not look like the
+    # silence before it: that would move the cut end into the word.
+    t = make_transcript("regulate@1.0-2.0 um@2.39-2.91 on@3.89-4.21 the@4.21-4.33", duration=5.0)
+    with_energy(t, [(1.0, 2.0), (2.6, 2.84), (3.86, 4.01), (4.03, 4.33)])
+    (_, s), (e, _) = plan_cuts(t, {1}).keep
+    assert e <= 3.86 - 0.03
+
+
+def test_cuts_in_real_silence_stay_where_planned():
+    t = make_transcript("Hello@0.5-0.9 um@1.2-1.4 world.@1.8-2.3", duration=3.0)
+    planned = plan_cuts(t, {1}).keep
+    with_energy(t, [(0.5, 0.9), (1.2, 1.4), (1.8, 2.3)])
+    assert plan_cuts(t, {1}).keep == planned
+
+
+def test_snapping_never_turns_a_pause_into_a_cut():
+    t = with_energy(make_transcript("Hello@0.5-0.9 world.@1.8-2.3", duration=3.0), [(0.5, 0.9), (1.8, 2.3)])
+    assert plan_cuts(t, set()).keep == [(0.0, 3.0)]
+
+
+def test_cut_end_never_jumps_back_past_the_removed_word():
+    # Modeled on a real clip: whisper starts "um" 0.46 s early; the real "um"
+    # (2.86-3.08, then a nasal tail) runs straight into "because", and the
+    # only real silence is before the "um". The cut end must not retreat there.
+    t = make_transcript("interconnection,@1.0-2.0 um,@2.4-3.1 because@3.25-3.5", duration=4.0)
+    frames = bytearray([140] * 400)
+    frames[100:185] = bytes([210]) * 85  # "interconnection"
+    frames[205:220] = bytes([130]) * 15  # the silence after it
+    frames[220:275] = bytes([150]) * 55  # breath and room noise
+    frames[286:308] = bytes([215]) * 22  # the "um"
+    frames[308:325] = bytes([185]) * 17  # its nasal tail
+    frames[326:350] = bytes([215]) * 24  # "because"
+    t.energy = base64.b64encode(bytes(frames)).decode()
+    (_, s), (e, _) = plan_cuts(t, {1}).keep
+    assert s <= 2.86 and e >= 3.08  # the "um" itself is cut

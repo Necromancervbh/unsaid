@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 import faster_whisper
+import numpy as np
 import pytest
 from conftest import make_transcript
 
@@ -85,7 +86,7 @@ def transcribed_words(monkeypatch, tmp_path, segments, model=None, **options) ->
     media = tmp_path / "talk.wav"
     media.write_bytes(b"")
     model = model or SegmentModel(segments)
-    monkeypatch.setattr(faster_whisper, "decode_audio", lambda path: None)
+    monkeypatch.setattr(faster_whisper, "decode_audio", lambda path: np.zeros(31 * 16000, dtype=np.float32))
     monkeypatch.setattr(tr, "_load_model", lambda *args: model)
     monkeypatch.setattr(tr, "_unheard", lambda audio, words: [])
     return [w.text for w in tr.transcribe(media, language="en", progress=False, **options).words]

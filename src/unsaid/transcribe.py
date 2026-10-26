@@ -1,12 +1,13 @@
 """Local speech-to-text with word timestamps, via faster-whisper."""
 from __future__ import annotations
 
+import base64
 import os
 import sys
 from pathlib import Path
 
 from .fillers import SOUNDS
-from .transcript import Transcript, Word, normalize, source_fingerprint
+from .transcript import ENERGY_HOP, ENERGY_STEPS_PER_DB, Transcript, Word, normalize, source_fingerprint
 
 # Whisper tends to "clean up" disfluencies. Priming it with text that contains
 # fillers makes it transcribe them verbatim, which filler removal depends on.
@@ -71,7 +72,20 @@ def transcribe(
     for s, e in unheard:
         _log(f"whisper skipped speech at {s:.1f}-{e:.1f}s; unsaid won't cut there", progress)
     return Transcript(words=words, duration=round(info.duration, 3), language=language,
-                      model=model, source=source_fingerprint(media), unheard=unheard)
+                      model=model, source=source_fingerprint(media), unheard=unheard, energy=_energy(audio))
+
+
+def _energy(audio) -> str:
+    """The loudness track: dB every 10 ms, smoothed over 30 ms, one byte each."""
+    import numpy as np
+
+    hop = int(SAMPLE_RATE * ENERGY_HOP)
+    n = len(audio) // hop
+    power = (audio[:n * hop].reshape(n, hop).astype(np.float64) ** 2).mean(axis=1)
+    power = np.convolve(power, np.ones(3) / 3, mode="same")
+    db = 10 * np.log10(power + 1e-10)
+    frames = np.clip((db + 100) * ENERGY_STEPS_PER_DB, 0, 255).astype(np.uint8)
+    return base64.b64encode(frames.tobytes()).decode("ascii")
 
 
 def _unheard(audio, words: list[Word], slack: float = 0.15) -> list[tuple[float, float]]:
