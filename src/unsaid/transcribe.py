@@ -4,11 +4,22 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from .transcript import Transcript, Word, source_fingerprint
+from .fillers import SOUNDS
+from .transcript import Transcript, Word, normalize, source_fingerprint
 
 # Whisper tends to "clean up" disfluencies. Priming it with text that contains
 # fillers makes it transcribe them verbatim, which filler removal depends on.
 VERBATIM_PROMPT = "Umm, let me think like, hmm... Okay, here's what I'm, like, thinking. Uh, so, um, yeah."
+
+# The prompt has a side effect: Whisper sometimes tacks a made-up segment
+# ("Good.", "All right.") onto the end of the speech. Those are a fraction of a
+# second long and decode with low confidence (avg log-prob around -1.15,
+# no-speech probability around 0.4), while real speech sits near -0.15 and 0.
+# Whisper's own silence check only drops segments with no-speech above 0.6, so
+# it lets them through.
+HALLUCINATION_LOGPROB = -1.0  # whisper's own log_prob_threshold
+HALLUCINATION_NO_SPEECH = 0.2
+HALLUCINATION_MAX_LEN = 0.5
 
 
 def transcribe(
@@ -37,6 +48,9 @@ def transcribe(
     )
     words: list[Word] = []
     for seg in segments:
+        if _hallucinated(seg):
+            _log(f"\rskipped {seg.text.strip()!r} at {seg.start:.1f}s (likely made up by whisper)", progress)
+            continue
         for w in seg.words or []:
             text = w.word.strip()
             if text:
@@ -47,6 +61,21 @@ def transcribe(
 
     return Transcript(words=words, duration=round(info.duration, 3), language=language,
                       model=model, source=source_fingerprint(media))
+
+
+def _hallucinated(seg) -> bool:
+    """A short, low-confidence segment that whisper probably made up.
+
+    Segments made only of fillers are always kept: if one is real, dropping it
+    would leave the "um" in the video, and if it's made up, cutting it only
+    trims a little silence.
+    """
+    words = seg.words or []
+    if words and all(normalize(w.word) in SOUNDS for w in words):
+        return False
+    return (seg.avg_logprob < HALLUCINATION_LOGPROB
+            and seg.no_speech_prob > HALLUCINATION_NO_SPEECH
+            and seg.end - seg.start < HALLUCINATION_MAX_LEN)
 
 
 def _load_model(model: str, device: str, progress: bool):

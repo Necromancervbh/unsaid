@@ -4,7 +4,7 @@
 
 unsaid transcribes your video on your own machine. You delete words from the transcript and they're gone from the video. Filler words go in one command. No account, no API key, no upload.
 
-![Deleting a sentence from talk.unsaid.txt and running unsaid cut: the sentence and the filler words disappear from the video, which goes from 30.7s to 21.5s](docs/demo.gif)
+![Deleting a sentence from talk.unsaid.txt and running unsaid cut: the sentence and the filler words disappear from the video, which goes from 30.7s to 21.3s](docs/demo.gif)
 
 ```bash
 unsaid cut talk.mp4                  # remove "um", "uh", "hmm" -> talk.unsaid.mp4
@@ -83,7 +83,7 @@ The GIF at the top is drawn by `scripts/make_demo_gif.py` from a real `unsaid cu
 ## Known limitations
 
 - Filler detection is only as good as the transcript. It has been checked on synthetic speech so far. Real recordings, especially non-English ones, still need testing.
-- Whisper sometimes invents a word or two in trailing silence. Delete them in the script.
+- Whisper can mishear words, or make one up. unsaid already drops the short, low-confidence segment Whisper tends to tack onto the end of a recording ("Good.", "Bye."). Delete any other made-up words in the script.
 - Output is always re-encoded (H.264 + AAC) at the source's frame rate.
 
 ## License
