@@ -93,7 +93,7 @@ def _marked_text(t: Transcript, removed: set[int]) -> str:
 
 
 def _fmt(seconds: float) -> str:
-    m, s = divmod(seconds, 60)
+    m, s = divmod(round(seconds, 1), 60)  # round first, or 239.96 prints as 3:60.0
     return f"{int(m)}:{s:04.1f}"
 
 
