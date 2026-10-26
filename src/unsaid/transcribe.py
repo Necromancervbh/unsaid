@@ -1,6 +1,7 @@
 """Local speech-to-text with word timestamps, via faster-whisper."""
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -82,10 +83,27 @@ def _hallucinated(seg) -> bool:
             and seg.end - seg.start < HALLUCINATION_MAX_LEN)
 
 
+def _model_path(model: str) -> str:
+    """
+    Load a model that's already downloaded straight from disk. Otherwise
+    faster-whisper asks Hugging Face for updates on every run, which costs a
+    round trip, fails offline, and stalls when the connection does.
+    """
+    from faster_whisper.utils import download_model
+
+    if os.path.isdir(model):
+        return model
+    try:
+        return download_model(model, local_files_only=True)
+    except (FileNotFoundError, ValueError):  # not downloaded yet, or not a known name
+        return model
+
+
 def _load_model(model: str, device: str, progress: bool):
     import numpy as np
     from faster_whisper import WhisperModel
 
+    model = _model_path(model)
     if device != "auto":
         return WhisperModel(model, device=device, compute_type="auto")
     # "auto" picks CUDA whenever an NVIDIA GPU is present, even if the CUDA

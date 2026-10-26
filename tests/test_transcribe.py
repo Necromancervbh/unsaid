@@ -36,6 +36,30 @@ def test_explicit_device_is_not_probed(monkeypatch):
     assert FakeModel.created == ["cuda"]
 
 
+def test_downloaded_model_loads_without_network(monkeypatch, tmp_path):
+    calls = []
+
+    def download_model(name, local_files_only=False):
+        calls.append((name, local_files_only))
+        return str(tmp_path)
+
+    monkeypatch.setattr(faster_whisper.utils, "download_model", download_model)
+    assert tr._model_path("small") == str(tmp_path)
+    assert calls == [("small", True)]
+
+
+def test_missing_model_is_left_for_faster_whisper_to_download(monkeypatch):
+    def download_model(name, local_files_only=False):
+        raise FileNotFoundError(name)  # what huggingface_hub's LocalEntryNotFoundError is
+
+    monkeypatch.setattr(faster_whisper.utils, "download_model", download_model)
+    assert tr._model_path("small") == "small"
+
+
+def test_local_model_directory_is_used_as_is(tmp_path):
+    assert tr._model_path(str(tmp_path)) == str(tmp_path)
+
+
 def segment(spec: str, avg_logprob: float, no_speech_prob: float) -> SimpleNamespace:
     """'Good.@29.71-29.79' -> a faster-whisper-like segment with word timestamps."""
     words = []
