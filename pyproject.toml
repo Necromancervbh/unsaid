@@ -1,0 +1,31 @@
+[project]
+name = "unsaid"
+version = "0.1.0"
+description = "Edit video by editing text. An open-source, local-first Descript alternative."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+dependencies = [
+    "av>=12",
+    "faster-whisper>=1.1",
+    "imageio-ffmpeg>=0.5",
+]
+keywords = ["video", "editing", "transcript", "whisper", "descript", "ffmpeg", "podcast"]
+classifiers = [
+    "Environment :: Console",
+    "Topic :: Multimedia :: Video :: Non-Linear Editor",
+    "Topic :: Multimedia :: Sound/Audio :: Speech",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[project.scripts]
+unsaid = "unsaid.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
