@@ -44,7 +44,11 @@ def transcribe(
         word_timestamps=True,
         vad_filter=True,
         condition_on_previous_text=False,
-        initial_prompt=VERBATIM_PROMPT if verbatim and language == "en" else None,
+        # Not initial_prompt: with condition_on_previous_text off, faster-whisper
+        # only uses that for the first 30-second window, and fillers vanish from
+        # the rest of the recording. hotwords goes into every window's context
+        # the same way.
+        hotwords=VERBATIM_PROMPT if verbatim and language == "en" else None,
     )
     words: list[Word] = []
     for seg in segments:

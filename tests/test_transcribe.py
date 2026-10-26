@@ -52,15 +52,33 @@ class SegmentModel:
         self.segments = segments
 
     def transcribe(self, audio, **kwargs):
+        self.kwargs = kwargs
         return iter(self.segments), SimpleNamespace(duration=31.0)
 
 
-def transcribed_words(monkeypatch, tmp_path, segments) -> list[str]:
+def transcribed_words(monkeypatch, tmp_path, segments, model=None, **options) -> list[str]:
     media = tmp_path / "talk.wav"
     media.write_bytes(b"")
+    model = model or SegmentModel(segments)
     monkeypatch.setattr(faster_whisper, "decode_audio", lambda path: None)
-    monkeypatch.setattr(tr, "_load_model", lambda *args: SegmentModel(segments))
-    return [w.text for w in tr.transcribe(media, language="en", progress=False).words]
+    monkeypatch.setattr(tr, "_load_model", lambda *args: model)
+    return [w.text for w in tr.transcribe(media, language="en", progress=False, **options).words]
+
+
+def test_verbatim_prompt_reaches_every_window(monkeypatch, tmp_path):
+    # faster-whisper drops initial_prompt after the first 30 s window when
+    # condition_on_previous_text is off; hotwords is sent with every window.
+    model = SegmentModel([])
+    transcribed_words(monkeypatch, tmp_path, [], model=model)
+    assert model.kwargs["hotwords"] == tr.VERBATIM_PROMPT
+    assert model.kwargs.get("initial_prompt") is None
+    assert model.kwargs["condition_on_previous_text"] is False
+
+
+def test_no_verbatim_sends_no_prompt(monkeypatch, tmp_path):
+    model = SegmentModel([])
+    transcribed_words(monkeypatch, tmp_path, [], model=model, verbatim=False)
+    assert model.kwargs["hotwords"] is None
 
 
 # Measured with whisper 'base' and the verbatim prompt: real speech, then the
