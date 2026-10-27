@@ -9,7 +9,8 @@ unsaid transcribes your video on your own machine. You delete words from the tra
 ![Deleting a sentence from talk.unsaid.txt and running unsaid cut: the sentence and the filler words disappear from the video, which goes from 30.7s to 21.3s](https://raw.githubusercontent.com/Necromancervbh/unsaid/main/docs/demo.gif)
 
 ```bash
-unsaid cut talk.mp4                  # remove "um", "uh", "hmm" -> talk.unsaid.mp4
+unsaid edit talk.mp4                 # edit the transcript in your browser, then export
+unsaid cut talk.mp4                  # or just remove "um", "uh", "hmm" -> talk.unsaid.mp4
 unsaid cut talk.mp4 --max-pause 0.6  # ...and tighten long pauses
 ```
 
@@ -26,6 +27,16 @@ That's all you need. ffmpeg comes bundled through `imageio-ffmpeg`, and if an `f
 On a laptop CPU, `small` transcribes about 3-4x faster than real time: a 4-minute interview takes about a minute. Rendering the cut takes seconds. An NVIDIA GPU with CUDA is used automatically when available.
 
 ## Usage
+
+### Edit in your browser
+
+```bash
+unsaid edit talk.mp4
+```
+
+This opens the transcript next to the video in your browser. Select words and press <kbd>Delete</kbd> to cut them, or press it again to bring them back. Filler words start out cut. Playback skips the cuts, so you hear the edit as you make it, and **Export** renders `talk.unsaid.mp4`.
+
+Everything stays on your machine: the editor is a small server on `127.0.0.1` that only serves this one file. Edits save as you go to `talk.unsaid.edit.json`, so you can close the tab and pick up later. Files a browser can't play, like `.mkv` or `.avi`, get a small preview copy, and the export still renders from the original. Use `--port` to pick the port and `--no-browser` to just print the URL.
 
 ### Remove filler words
 
@@ -79,7 +90,7 @@ The GIF at the top is drawn by `scripts/make_demo_gif.py` from a real `unsaid cu
 
 ## Roadmap
 
-- [ ] Browser editor: `unsaid edit talk.mp4` opens the transcript, and striking text cuts the video live
+- [x] Browser editor: `unsaid edit talk.mp4` opens the transcript, and striking text cuts the video live
 - [ ] Agent mode: an MCP server plus `SKILL.md`, so Claude Code, Codex or Cursor can make the edit ("cut this to a 60-second highlight")
 - [ ] Captions: SRT/VTT export retimed to the edit, plus animated burned-in captions for Shorts and Reels
 - [ ] FCPXML/EDL export for Resolve, Premiere and Final Cut
