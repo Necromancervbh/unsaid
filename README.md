@@ -101,7 +101,8 @@ The GIF at the top is drawn by `scripts/make_demo_gif.py` from a real `unsaid cu
 ## Roadmap
 
 - [x] Browser editor: `unsaid edit talk.mp4` opens the transcript, and striking text cuts the video live
-- [ ] Agent mode: an MCP server plus `SKILL.md`, so Claude Code, Codex or Cursor can make the edit ("cut this to a 60-second highlight")
+- [x] Agent skill: `SKILL.md`, so Claude Code, Codex or Cursor can make the edit ("cut this to a 60-second highlight")
+- [ ] MCP server, for agents that prefer tools to a CLI
 - [ ] Captions: SRT/VTT export retimed to the edit, plus animated burned-in captions for Shorts and Reels
 - [ ] FCPXML/EDL export for Resolve, Premiere and Final Cut
 - [ ] Stutter and repeated-word removal ("I I think")
