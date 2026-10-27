@@ -71,6 +71,16 @@ Deleted words are cut from the video. Fixing a typo or capitalization in the scr
 
 Transcripts are cached next to the input as `<input>.unsaid.json`, so re-cutting with different options is instant. Run `unsaid transcribe --force` to redo one.
 
+### Let a coding agent do the edit
+
+[`skills/unsaid/SKILL.md`](skills/unsaid/SKILL.md) teaches an agent the unsaid workflow: transcribe, plan the cut, delete lines, dry-run, render. For Claude Code, copy the folder into your skills:
+
+```bash
+git clone https://github.com/Necromancervbh/unsaid && cp -r unsaid/skills/unsaid ~/.claude/skills/
+```
+
+Then ask: *"cut talk.mp4 down to a 60-second highlight about pricing"*. Other agents (Codex, Cursor, ...) can be pointed at the same file.
+
 ## How it works
 
 1. **Transcribe.** [faster-whisper](https://github.com/SYSTRAN/faster-whisper) runs with word timestamps. Whisper normally "cleans up" disfluencies, so unsaid primes every 30-second window with a prompt full of fillers, which makes it keep them verbatim. Use `--no-verbatim` to turn this off. A voice-activity detector then checks for speech Whisper skipped. Whisper occasionally does, and that speech would otherwise look like a pause.
