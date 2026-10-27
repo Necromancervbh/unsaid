@@ -1,11 +1,13 @@
 """Local speech-to-text with word timestamps, via faster-whisper."""
 from __future__ import annotations
 
+import base64
+import os
 import sys
 from pathlib import Path
 
 from .fillers import SOUNDS
-from .transcript import Transcript, Word, normalize, source_fingerprint
+from .transcript import ENERGY_HOP, ENERGY_STEPS_PER_DB, Transcript, Word, normalize, source_fingerprint
 
 # Whisper tends to "clean up" disfluencies. Priming it with text that contains
 # fillers makes it transcribe them verbatim, which filler removal depends on.
@@ -20,6 +22,9 @@ VERBATIM_PROMPT = "Umm, let me think like, hmm... Okay, here's what I'm, like, t
 HALLUCINATION_LOGPROB = -1.0  # whisper's own log_prob_threshold
 HALLUCINATION_NO_SPEECH = 0.2
 HALLUCINATION_MAX_LEN = 0.5
+
+SAMPLE_RATE = 16000  # what faster-whisper's decode_audio returns
+UNHEARD_MIN = 1.0  # seconds of speech without words before it's flagged as skipped
 
 
 def transcribe(
@@ -63,8 +68,52 @@ def transcribe(
         _log(f"\rtranscribed {seg.end:6.1f}s / {info.duration:.1f}s", progress, end="")
     _log("", progress)
 
+    unheard = _unheard(audio, words)
+    for s, e in unheard:
+        _log(f"whisper skipped speech at {s:.1f}-{e:.1f}s; unsaid won't cut there", progress)
     return Transcript(words=words, duration=round(info.duration, 3), language=language,
-                      model=model, source=source_fingerprint(media))
+                      model=model, source=source_fingerprint(media), unheard=unheard, energy=_energy(audio))
+
+
+def _energy(audio) -> str:
+    """The loudness track: dB every 10 ms, smoothed over 30 ms, one byte each."""
+    import numpy as np
+
+    hop = int(SAMPLE_RATE * ENERGY_HOP)
+    n = len(audio) // hop
+    power = (audio[:n * hop].reshape(n, hop).astype(np.float64) ** 2).mean(axis=1)
+    power = np.convolve(power, np.ones(3) / 3, mode="same")
+    db = 10 * np.log10(power + 1e-10)
+    frames = np.clip((db + 100) * ENERGY_STEPS_PER_DB, 0, 255).astype(np.uint8)
+    return base64.b64encode(frames.tobytes()).decode("ascii")
+
+
+def _unheard(audio, words: list[Word], slack: float = 0.15) -> list[tuple[float, float]]:
+    """
+    Speech with no words in it. Whisper occasionally skips a whole stretch of
+    speech; without words it looks like a pause, and a nearby cut or
+    --max-pause would cut real speech. Silero VAD (shipped with faster-whisper)
+    finds the speech; any second or more of it that no word covers is flagged.
+    """
+    from faster_whisper.vad import VadOptions, get_speech_timestamps
+
+    chunks = get_speech_timestamps(audio, VadOptions(min_silence_duration_ms=150, speech_pad_ms=30,
+                                                     min_speech_duration_ms=150))
+    covered = sorted((w.start - slack, w.end + slack) for w in words)
+    out, k = [], 0
+    for c in chunks:
+        s, e = c["start"] / SAMPLE_RATE, c["end"] / SAMPLE_RATE
+        while k < len(covered) and covered[k][1] <= s:
+            k += 1
+        cur, j = s, k
+        while j < len(covered) and covered[j][0] < e:
+            if covered[j][0] - cur >= UNHEARD_MIN:
+                out.append((round(cur, 3), round(covered[j][0], 3)))
+            cur = max(cur, covered[j][1])
+            j += 1
+        if e - cur >= UNHEARD_MIN:
+            out.append((round(cur, 3), round(e, 3)))
+    return out
 
 
 def _hallucinated(seg) -> bool:
@@ -82,10 +131,27 @@ def _hallucinated(seg) -> bool:
             and seg.end - seg.start < HALLUCINATION_MAX_LEN)
 
 
+def _model_path(model: str) -> str:
+    """
+    Load a model that's already downloaded straight from disk. Otherwise
+    faster-whisper asks Hugging Face for updates on every run, which costs a
+    round trip, fails offline, and stalls when the connection does.
+    """
+    from faster_whisper.utils import download_model
+
+    if os.path.isdir(model):
+        return model
+    try:
+        return download_model(model, local_files_only=True)
+    except (FileNotFoundError, ValueError):  # not downloaded yet, or not a known name
+        return model
+
+
 def _load_model(model: str, device: str, progress: bool):
     import numpy as np
     from faster_whisper import WhisperModel
 
+    model = _model_path(model)
     if device != "auto":
         return WhisperModel(model, device=device, compute_type="auto")
     # "auto" picks CUDA whenever an NVIDIA GPU is present, even if the CUDA

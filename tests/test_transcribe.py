@@ -1,7 +1,9 @@
 from types import SimpleNamespace
 
 import faster_whisper
+import numpy as np
 import pytest
+from conftest import make_transcript
 
 from unsaid import transcribe as tr
 from unsaid.transcribe import _load_model
@@ -36,6 +38,30 @@ def test_explicit_device_is_not_probed(monkeypatch):
     assert FakeModel.created == ["cuda"]
 
 
+def test_downloaded_model_loads_without_network(monkeypatch, tmp_path):
+    calls = []
+
+    def download_model(name, local_files_only=False):
+        calls.append((name, local_files_only))
+        return str(tmp_path)
+
+    monkeypatch.setattr(faster_whisper.utils, "download_model", download_model)
+    assert tr._model_path("small") == str(tmp_path)
+    assert calls == [("small", True)]
+
+
+def test_missing_model_is_left_for_faster_whisper_to_download(monkeypatch):
+    def download_model(name, local_files_only=False):
+        raise FileNotFoundError(name)  # what huggingface_hub's LocalEntryNotFoundError is
+
+    monkeypatch.setattr(faster_whisper.utils, "download_model", download_model)
+    assert tr._model_path("small") == "small"
+
+
+def test_local_model_directory_is_used_as_is(tmp_path):
+    assert tr._model_path(str(tmp_path)) == str(tmp_path)
+
+
 def segment(spec: str, avg_logprob: float, no_speech_prob: float) -> SimpleNamespace:
     """'Good.@29.71-29.79' -> a faster-whisper-like segment with word timestamps."""
     words = []
@@ -60,8 +86,9 @@ def transcribed_words(monkeypatch, tmp_path, segments, model=None, **options) ->
     media = tmp_path / "talk.wav"
     media.write_bytes(b"")
     model = model or SegmentModel(segments)
-    monkeypatch.setattr(faster_whisper, "decode_audio", lambda path: None)
+    monkeypatch.setattr(faster_whisper, "decode_audio", lambda path: np.zeros(31 * 16000, dtype=np.float32))
     monkeypatch.setattr(tr, "_load_model", lambda *args: model)
+    monkeypatch.setattr(tr, "_unheard", lambda audio, words: [])
     return [w.text for w in tr.transcribe(media, language="en", progress=False, **options).words]
 
 
@@ -104,3 +131,19 @@ def test_made_up_trailing_segment_is_dropped(monkeypatch, tmp_path, made_up):
 def test_short_real_segments_are_kept(monkeypatch, tmp_path, real):
     words = transcribed_words(monkeypatch, tmp_path, [SPEECH, real])
     assert words == ["and", "nothing", "is", "uploaded."] + [w.word.strip() for w in real.words]
+
+
+def test_speech_without_words_is_flagged(monkeypatch):
+    # VAD hears speech 10-30s; whisper only transcribed 10-12s and 25-30s.
+    # The half second of speech at 40s is too short to matter.
+    chunks = [{"start": 10 * 16000, "end": 30 * 16000}, {"start": 40 * 16000, "end": 40 * 16000 + 8000}]
+    monkeypatch.setattr(faster_whisper.vad, "get_speech_timestamps", lambda audio, options: chunks)
+    words = make_transcript("a@10.0-11.0 b@11.2-12.0 c@25.0-27.0 d@27.1-30.0").words
+    assert tr._unheard(None, words) == [(12.15, 24.85)]
+
+
+def test_pauses_between_words_are_not_flagged(monkeypatch):
+    chunks = [{"start": 0, "end": 3 * 16000}, {"start": 5 * 16000, "end": 8 * 16000}]
+    monkeypatch.setattr(faster_whisper.vad, "get_speech_timestamps", lambda audio, options: chunks)
+    words = make_transcript("a@0.0-1.4 b@1.6-3.0 c@5.0-6.5 d@6.6-8.0").words
+    assert tr._unheard(None, words) == []

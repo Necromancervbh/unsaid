@@ -1,10 +1,12 @@
 # unsaid
 
+[![test](https://github.com/Necromancervbh/unsaid/actions/workflows/test.yml/badge.svg)](https://github.com/Necromancervbh/unsaid/actions/workflows/test.yml)
+
 **Edit video by editing text.** unsaid is an open-source, local-first Descript alternative.
 
 unsaid transcribes your video on your own machine. You delete words from the transcript and they're gone from the video. Filler words go in one command. No account, no API key, no upload.
 
-![Deleting a sentence from talk.unsaid.txt and running unsaid cut: the sentence and the filler words disappear from the video, which goes from 30.7s to 21.3s](docs/demo.gif)
+![Deleting a sentence from talk.unsaid.txt and running unsaid cut: the sentence and the filler words disappear from the video, which goes from 30.7s to 21.3s](https://raw.githubusercontent.com/Necromancervbh/unsaid/main/docs/demo.gif)
 
 ```bash
 unsaid edit talk.mp4                 # edit the transcript in your browser, then export
@@ -15,10 +17,14 @@ unsaid cut talk.mp4 --max-pause 0.6  # ...and tighten long pauses
 ## Install
 
 ```bash
-uv tool install git+https://github.com/Necromancervbh/unsaid   # or: pipx install ...
+uv tool install unsaid-video     # or: pipx install unsaid-video
 ```
 
-That's all you need. ffmpeg comes bundled through `imageio-ffmpeg`, and if an `ffmpeg` is on your `PATH` it's used instead. The Whisper model downloads on first run. The default `small` model is about 480 MB.
+The package is `unsaid-video` on PyPI; the command it installs is `unsaid`. For the latest from GitHub: `uv tool install git+https://github.com/Necromancervbh/unsaid`.
+
+That's all you need. ffmpeg comes bundled through `imageio-ffmpeg`, and if an `ffmpeg` is on your `PATH` it's used instead. The Whisper model downloads on first run. The default `small` model is about 480 MB, and after that unsaid works offline.
+
+On a laptop CPU, `small` transcribes about 3-4x faster than real time: a 4-minute interview takes about a minute. Rendering the cut takes seconds. An NVIDIA GPU with CUDA is used automatically when available.
 
 ## Usage
 
@@ -67,8 +73,8 @@ Transcripts are cached next to the input as `<input>.unsaid.json`, so re-cutting
 
 ## How it works
 
-1. **Transcribe.** [faster-whisper](https://github.com/SYSTRAN/faster-whisper) runs with word timestamps. Whisper normally "cleans up" disfluencies, so unsaid primes it with a prompt full of fillers, which makes it keep them verbatim. Use `--no-verbatim` to turn this off.
-2. **Plan cuts.** Cuts only ever land in the silence *between* kept words, padded so consonants aren't clipped. When a word is removed, the pause left behind is the *shorter* of the two pauses around it, so the edit keeps the speaker's rhythm instead of jamming words together.
+1. **Transcribe.** [faster-whisper](https://github.com/SYSTRAN/faster-whisper) runs with word timestamps. Whisper normally "cleans up" disfluencies, so unsaid primes every 30-second window with a prompt full of fillers, which makes it keep them verbatim. Use `--no-verbatim` to turn this off. A voice-activity detector then checks for speech Whisper skipped. Whisper occasionally does, and that speech would otherwise look like a pause.
+2. **Plan cuts.** Cuts only ever land in the silence *between* kept words, and never inside speech Whisper skipped. When a word is removed, the pause left behind is the *shorter* of the two pauses around it, so the edit keeps the speaker's rhythm instead of jamming words together. Whisper's word timestamps can be off by a tenth of a second, so each cut edge then moves into the silence the audio actually shows next to the kept word, which keeps the first and last sounds of words intact.
 3. **Render.** ffmpeg trims and concatenates the kept ranges in one pass. Cut points snap to the video's frame grid, so audio and video stay exactly in sync however many cuts there are, and each audio cut gets an 8 ms fade to avoid clicks.
 
 ## Development
@@ -91,9 +97,20 @@ The GIF at the top is drawn by `scripts/make_demo_gif.py` from a real `unsaid cu
 - [ ] Stutter and repeated-word removal ("I I think")
 - [ ] Overdub with a local voice clone, and "studio sound" cleanup
 
+## Tested on real speech
+
+Two unscripted English interviews (CC BY, from Wikimedia Commons), with default settings on a laptop CPU:
+
+| Clip | Transcribe | Fillers cut | Result | Render |
+|---|---|---|---|---|
+| 4:20 press Q&A, background noise | 85 s | 23 | 4:20.3 → 4:03.2 | 8 s |
+| 3:55 one-on-one interview | 62 s | 15 | 3:54.9 → 3:41.8 | 10 s |
+
+To check the cuts, the output files were transcribed again and compared with the words unsaid meant to keep. They matched at 98.6% and 99.2%. Every difference was Whisper hearing a name or a word differently, none of them within two seconds of a cut. Two fillers that Whisper missed the first time stayed in. Audio and video stayed in sync to the frame through every cut.
+
 ## Known limitations
 
-- Filler detection is only as good as the transcript. It has been checked on synthetic speech so far. Real recordings, especially non-English ones, still need testing.
+- Filler detection is only as good as Whisper's transcript. It's tuned for English: other languages are transcribed, but Whisper may clean up their fillers.
 - Whisper can mishear words, or make one up. unsaid already drops the short, low-confidence segment Whisper tends to tack onto the end of a recording ("Good.", "Bye."). Delete any other made-up words in the script.
 - Output is always re-encoded (H.264 + AAC) at the source's frame rate.
 

@@ -37,6 +37,10 @@ def cmd_transcribe(args) -> int:
 
 def cmd_cut(args) -> int:
     t = _get_transcript(args)
+    if t.unheard:
+        spans = ", ".join(f"{_fmt(s)}-{_fmt(e)}" for s, e in t.unheard)
+        print(f"note: whisper didn't transcribe some speech ({spans}); unsaid won't cut inside it",
+              file=sys.stderr)
     removed: set[int] = set()
     n_fillers = 0
     if not args.no_fillers:
@@ -47,7 +51,9 @@ def cmd_cut(args) -> int:
         by_script, changed = removed_by_script(t, args.script.read_text(encoding="utf-8"))
         removed |= by_script
         if changed:
-            print(f"note: {changed} words in {args.script.name} differ from the transcript; they were kept "
+            one = changed == 1
+            print(f"note: {changed} {'word' if one else 'words'} in {args.script.name} "
+                  f"{'differs' if one else 'differ'} from the transcript and {'was' if one else 'were'} kept "
                   "(unsaid can only remove words, not change them)", file=sys.stderr)
 
     plan = plan_cuts(t, removed, max_pause=args.max_pause)
