@@ -57,7 +57,7 @@ kbd {
 .w { border-radius: 3px; cursor: text; }
 .w:hover { background: var(--panel); }
 .w.filler { text-decoration: underline dotted var(--filler) 2px; text-underline-offset: 5px; }
-.w.cut { color: var(--cut); background: var(--cut-bg); text-decoration: line-through var(--cut) 2px; }
+.w.cut, .sp.cut { color: var(--cut); background: var(--cut-bg); text-decoration: line-through var(--cut) 2px; }
 .w.now { background: var(--now); }
 .w.cut.now { outline: 2px solid var(--cut); }
 #toast {
@@ -70,8 +70,14 @@ kbd {
 @media (max-width: 860px) {
   main { grid-template-columns: 1fr; gap: 20px; padding: 16px 16px 80px; }
   .player { position: static; }
-  header { padding: 10px 16px; flex-wrap: wrap; }
+  header { padding: 10px 16px; flex-wrap: wrap; row-gap: 6px; }
+  .name { flex: 1; }
   .durations { margin-left: 0; order: 3; width: 100%; }
+}
+@media (max-width: 560px) {
+  header { gap: 8px; }
+  .name { display: none; }
+  .brand { flex: 1; }
 }
 </style>
 </head>
@@ -105,7 +111,7 @@ kbd {
 "use strict";
 const $ = (id) => document.getElementById(id);
 let words = [], fillers = new Set(), removed = new Set(), keep = [], duration = 0, outputDuration = 0;
-let spans = [], media = null, undoStack = [], redoStack = [], current = -1, saveTimer = null, saving = Promise.resolve();
+let spans = [], spaces = [], media = null, undoStack = [], redoStack = [], current = -1, saveTimer = null, saving = Promise.resolve();
 
 function fmt(s) {
   const t = Math.round(s * 10) / 10, m = Math.floor(t / 60);
@@ -158,7 +164,12 @@ function buildTranscript() {
       p.append(stamp);
       root.append(p);
     } else {
-      p.append(" ");
+      // The space before word i, so a run of cut words reads as one strike.
+      const space = document.createElement("span");
+      space.className = "sp";
+      space.textContent = " ";
+      p.append(space);
+      spaces[i] = space;
     }
     const span = document.createElement("span");
     span.className = "w" + (fillers.has(i) ? " filler" : "");
@@ -172,6 +183,7 @@ function buildTranscript() {
 
 function paint() {
   spans.forEach((s, i) => s.classList.toggle("cut", removed.has(i)));
+  spaces.forEach((s, i) => s.classList.toggle("cut", removed.has(i - 1) && removed.has(i)));
   const cutFillers = [...fillers].filter((i) => removed.has(i)).length;
   const box = $("fillers");
   box.checked = fillers.size > 0 && cutFillers === fillers.size;
