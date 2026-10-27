@@ -6,7 +6,7 @@
 
 unsaid transcribes your video on your own machine. You delete words from the transcript and they're gone from the video. Filler words go in one command. No account, no API key, no upload.
 
-![Deleting a sentence from talk.unsaid.txt and running unsaid cut: the sentence and the filler words disappear from the video, which goes from 30.7s to 21.3s](docs/demo.gif)
+![Deleting a sentence from talk.unsaid.txt and running unsaid cut: the sentence and the filler words disappear from the video, which goes from 30.7s to 21.3s](https://raw.githubusercontent.com/Necromancervbh/unsaid/main/docs/demo.gif)
 
 ```bash
 unsaid cut talk.mp4                  # remove "um", "uh", "hmm" -> talk.unsaid.mp4
@@ -16,8 +16,10 @@ unsaid cut talk.mp4 --max-pause 0.6  # ...and tighten long pauses
 ## Install
 
 ```bash
-uv tool install git+https://github.com/Necromancervbh/unsaid   # or: pipx install ...
+uv tool install unsaid-video     # or: pipx install unsaid-video
 ```
+
+The package is `unsaid-video` on PyPI; the command it installs is `unsaid`. For the latest from GitHub: `uv tool install git+https://github.com/Necromancervbh/unsaid`.
 
 That's all you need. ffmpeg comes bundled through `imageio-ffmpeg`, and if an `ffmpeg` is on your `PATH` it's used instead. The Whisper model downloads on first run. The default `small` model is about 480 MB, and after that unsaid works offline.
 

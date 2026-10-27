@@ -1,5 +1,7 @@
 [project]
-name = "unsaid"
+# "unsaid" is taken on PyPI by an unrelated project. The command and the
+# import name are still `unsaid`.
+name = "unsaid-video"
 version = "0.1.0"
 description = "Edit video by editing text. An open-source, local-first Descript alternative."
 readme = "README.md"
@@ -12,10 +14,19 @@ dependencies = [
 ]
 keywords = ["video", "editing", "transcript", "whisper", "descript", "ffmpeg", "podcast"]
 classifiers = [
+    "Development Status :: 3 - Alpha",
     "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
     "Topic :: Multimedia :: Video :: Non-Linear Editor",
     "Topic :: Multimedia :: Sound/Audio :: Speech",
 ]
+
+[project.urls]
+Homepage = "https://github.com/Necromancervbh/unsaid"
+Issues = "https://github.com/Necromancervbh/unsaid/issues"
+Changelog = "https://github.com/Necromancervbh/unsaid/releases"
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
@@ -26,6 +37,12 @@ unsaid = "unsaid.cli:main"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/unsaid"]
+
+[tool.hatch.build.targets.sdist]
+exclude = ["docs/demo.gif"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
