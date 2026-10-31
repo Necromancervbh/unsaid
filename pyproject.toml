@@ -2,7 +2,7 @@
 # "unsaid" is taken on PyPI by an unrelated project. The command and the
 # import name are still `unsaid`.
 name = "unsaid-video"
-version = "0.2.0"
+version = "0.3.0"
 description = "Edit video by editing text. An open-source, local-first Descript alternative."
 readme = "README.md"
 license = "MIT"
