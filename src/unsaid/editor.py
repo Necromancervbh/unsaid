@@ -16,9 +16,10 @@ from importlib import resources
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from .captions import make_cues, retime, to_srt
 from .cuts import plan_cuts
 from .fillers import find_fillers
-from .render import RenderError, ffmpeg_exe, probe, render
+from .render import RenderError, ffmpeg_exe, output_ranges, probe, render
 from .transcript import Transcript, source_fingerprint
 
 # Containers browsers can play directly. Anything else (.mkv, .avi, .mts, ...)
@@ -75,8 +76,11 @@ class Session:
     def export(self) -> dict:
         with self.lock:
             p = plan_cuts(self.transcript, self.removed, max_pause=self.max_pause)
-            render(self.media, p.keep, self.output, quiet=True)
-            return {"output": str(self.output), "output_duration": p.output_duration}
+            keep = output_ranges(p.keep, probe(self.media))
+            render(self.media, keep, self.output, quiet=True)
+            captions = self.output.with_suffix(".srt")
+            captions.write_text(to_srt(make_cues(retime(self.transcript, self.removed, keep))), encoding="utf-8")
+            return {"output": str(self.output), "captions": str(captions), "output_duration": p.output_duration}
 
     def make_preview(self, log=print) -> None:
         """Browsers can't play every container; give them a small H.264 copy instead."""

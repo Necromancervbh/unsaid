@@ -42,6 +42,8 @@ class MediaInfo:
     has_video: bool
     has_audio: bool
     fps: Fraction | None = None
+    width: int = 0
+    height: int = 0
 
 
 def probe(media: Path) -> MediaInfo:
@@ -52,7 +54,8 @@ def probe(media: Path) -> MediaInfo:
             video = [s for s in c.streams.video if not s.disposition & av.stream.Disposition.attached_pic]
             fps = (video[0].average_rate or video[0].guessed_rate) if video else None
             return MediaInfo(has_video=bool(video), has_audio=bool(c.streams.audio),
-                             fps=Fraction(fps) if fps else None)
+                             fps=Fraction(fps) if fps else None,
+                             width=video[0].width if video else 0, height=video[0].height if video else 0)
     except av.FFmpegError as e:
         raise RenderError(f"could not read {media}: {e}") from e
 
@@ -71,7 +74,13 @@ def snap_to_frames(keep: list[Range], fps: float) -> list[Range]:
     return out
 
 
-def build_filtergraph(keep: list[Range], video: bool, fps: float | None = None) -> str:
+def output_ranges(keep: list[Range], info: MediaInfo) -> list[Range]:
+    """The ranges render() actually keeps: on the frame grid, for video."""
+    return snap_to_frames(keep, float(info.fps)) if info.has_video and info.fps else keep
+
+
+def build_filtergraph(keep: list[Range], video: bool, fps: float | None = None, burn: str | None = None) -> str:
+    """burn: an ASS subtitle file, relative to ffmpeg's working directory, to draw onto the video."""
     # With frame-snapped ranges, trim video half a frame early so no frame timestamp
     # sits exactly on a boundary: [s, e) then selects exactly (e - s) * fps frames,
     # matching the audio cut at s and e.
@@ -89,43 +98,53 @@ def build_filtergraph(keep: list[Range], video: bool, fps: float | None = None) 
             f"afade=t=in:d={fade:.6f},afade=t=out:st={d - fade:.6f}:d={fade:.6f}[a{i}]"
         )
         pads.append(f"[a{i}]")
-    outs = "[outv][outa]" if video else "[outa]"
+    outs = ("[cv][outa]" if burn else "[outv][outa]") if video else "[outa]"
     parts.append(f"{''.join(pads)}concat=n={len(keep)}:v={int(video)}:a=1{outs}")
+    if video and burn:
+        parts.append(f"[cv]ass={burn}[outv]")
     return ";\n".join(parts)
 
 
 def render(media: Path, keep: list[Range], output: Path, crf: int = 18, preset: str = "veryfast",
-           quiet: bool = False) -> None:
+           quiet: bool = False, burn: str | None = None) -> None:
+    """burn: an ASS subtitle document (see captions.to_ass) to draw onto the video."""
     if not keep:
         raise RenderError("nothing left to render: every word was removed")
     info = probe(media)
     if not info.has_audio:
         raise RenderError(f"{media} has no audio track")
+    if burn and not info.has_video:
+        raise RenderError(f"{media} has no video to burn captions into")
     fps = info.fps if info.has_video else None
-    if fps:
-        keep = snap_to_frames(keep, float(fps))
+    keep = output_ranges(keep, info)
 
-    graph = build_filtergraph(keep, video=info.has_video, fps=float(fps) if fps else None)
-    with tempfile.NamedTemporaryFile("w", suffix=".ffgraph", delete=False, encoding="utf-8") as f:
-        f.write(graph)
-        graph_file = f.name
+    # ffmpeg runs in a temporary directory holding the graph and the captions,
+    # so the subtitle filter gets a bare file name: a Windows path's drive colon
+    # and backslashes would need escaping twice over inside a filter graph.
+    workdir = tempfile.mkdtemp(prefix="unsaid-")
+    graph_file = os.path.join(workdir, "graph.ffgraph")
+    if burn:
+        Path(workdir, "captions.ass").write_text(burn, encoding="utf-8")
+    graph = build_filtergraph(keep, video=info.has_video, fps=float(fps) if fps else None,
+                              burn="captions.ass" if burn else None)
+    Path(graph_file).write_text(graph, encoding="utf-8")
     # The graph can be thousands of segments long, so pass it as a file, not an argument.
     graph_args = (["-/filter_complex", graph_file] if _ffmpeg_version() >= (7, 1)
                   else ["-filter_complex_script", graph_file])
 
     cmd = [ffmpeg_exe(), "-hide_banner", "-loglevel", "error", "-nostats" if quiet else "-stats",
-           "-y", "-i", str(media), *graph_args]
+           "-y", "-i", str(media.resolve()), *graph_args]
     if info.has_video:
         cmd += ["-map", "[outv]", "-c:v", "libx264", "-preset", preset, "-crf", str(crf), "-pix_fmt", "yuv420p"]
         if fps:
             # Without an explicit rate the MP4 muxer drops the final frame of the edit.
             cmd += ["-r", f"{fps.numerator}/{fps.denominator}"]
-    cmd += ["-map", "[outa]", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", str(output)]
+    cmd += ["-map", "[outa]", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", str(output.resolve())]
 
     try:
-        proc = subprocess.run(cmd, stderr=subprocess.PIPE if quiet else None, text=True)
+        proc = subprocess.run(cmd, stderr=subprocess.PIPE if quiet else None, text=True, cwd=workdir)
     finally:
-        os.unlink(graph_file)
+        shutil.rmtree(workdir, ignore_errors=True)
     if proc.returncode != 0:
         raise RenderError(f"ffmpeg failed (exit {proc.returncode})" + (f":\n{proc.stderr}" if quiet else ""))
 

@@ -313,7 +313,7 @@ $("export").addEventListener("click", async () => {
     clearTimeout(saveTimer);
     await save();
     const result = await api("/api/export", {});
-    toast(`Saved ${result.output} (${fmt(result.output_duration)})`);
+    toast(`Saved ${result.output} (${fmt(result.output_duration)}), captions in ${result.captions}`);
   } catch (e) {
     toast(`Export failed: ${e.message}`, true);
   } finally {

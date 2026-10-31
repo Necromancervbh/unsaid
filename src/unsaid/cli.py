@@ -6,9 +6,10 @@ import sys
 from pathlib import Path
 
 from . import __version__
+from .captions import make_cues, retime, to_ass, to_srt, to_vtt
 from .cuts import plan_cuts
 from .fillers import find_fillers
-from .render import RenderError, default_output, probe, render
+from .render import RenderError, default_output, output_ranges, probe, render
 from .script import removed_by_script
 from .transcript import Transcript, load_cached, transcript_path
 
@@ -68,8 +69,19 @@ def cmd_cut(args) -> int:
     output = args.output or default_output(args.input, info.has_video)
     if output.resolve() == args.input.resolve():
         raise ValueError("output would overwrite the input")
-    render(args.input, plan.keep, output, crf=args.crf, preset=args.preset, quiet=args.quiet)
+    if args.burn_captions and not info.has_video:
+        raise ValueError(f"{args.input.name} has no video to burn captions into")
+    # Captions are timed to the ranges the render keeps, frame-snapped for video.
+    keep = output_ranges(plan.keep, info)
+    words = retime(t, removed, keep) if (args.captions or args.burn_captions) else []
+    burn = to_ass(make_cues(words, max_chars=24), info.width, info.height) if args.burn_captions else None
+    render(args.input, keep, output, crf=args.crf, preset=args.preset, quiet=args.quiet, burn=burn)
     print(output)
+    if args.captions:
+        cues = make_cues(words)
+        sidecar = output.with_suffix(f".{args.captions}")
+        sidecar.write_text(to_srt(cues) if args.captions == "srt" else to_vtt(cues), encoding="utf-8")
+        print(sidecar)
     return 0
 
 
@@ -150,6 +162,10 @@ def _parser() -> argparse.ArgumentParser:
     c.add_argument("--filler", action="append", default=[], metavar="WORD",
                    help="extra filler word or phrase to remove (repeatable)")
     c.add_argument("--max-pause", type=float, metavar="SECONDS", help="shorten pauses longer than this")
+    c.add_argument("--captions", choices=["srt", "vtt"],
+                   help="also write captions timed to the edit, next to the output")
+    c.add_argument("--burn-captions", action="store_true",
+                   help="burn captions into the video, one short line at a time with the spoken word highlighted")
     c.add_argument("--dry-run", action="store_true", help="show what would be cut, don't render")
     c.add_argument("-v", "--verbose", action="store_true", help="print the transcript with cuts marked")
     c.add_argument("-q", "--quiet", action="store_true", help="no progress output")

@@ -55,6 +55,8 @@ Check that it's installed with `unsaid --version`. If it isn't, install it with 
 | `--aggressive` | Also cut "like", "you know", "I mean", ... when they're set off by commas. |
 | `--filler WORD` | Add a verbal tic to cut. Repeat it for more, e.g. `--filler okay --filler "sort of"`. |
 | `--max-pause 0.6` | Shorten every pause longer than 0.6 s. Good for tightening a talk. |
+| `--captions srt` | Also write captions timed to the edit (`srt` or `vtt`), next to the output. |
+| `--burn-captions` | Burn captions into the video, one short line at a time with the spoken word highlighted. For Shorts, Reels and TikTok. |
 | `-v` | Print the marked-up transcript while rendering. |
 
 ## Tips
