@@ -57,6 +57,17 @@ unsaid cut talk.mp4 --script talk.unsaid.txt
 
 Deleted words are cut from the video. Fixing a typo or capitalization in the script doesn't cut anything: unsaid only cuts deletions, and it tells you how many changed words it left alone.
 
+### Captions
+
+```bash
+unsaid cut talk.mp4 --captions srt     # also writes talk.unsaid.srt (or --captions vtt)
+unsaid cut talk.mp4 --burn-captions    # draws them onto the video, Shorts/Reels style
+```
+
+Captions come from the same word timestamps as the cuts, so they're timed to the edited video, not the original, and need no second transcription. Burned-in captions show one short line at a time with the word being spoken highlighted. The browser editor's **Export** writes `talk.unsaid.srt` next to the video too.
+
+Captions use whisper's text, cuts and all: fix a misheard word in the `.srt` before you upload it.
+
 ### Options
 
 | Flag | What it does |
@@ -66,6 +77,8 @@ Deleted words are cut from the video. Fixing a typo or capitalization in the scr
 | `--device cpu\|cuda` | `auto` (the default) uses CUDA when it works and falls back to CPU |
 | `--max-pause S` | Shorten every pause longer than `S` seconds |
 | `--no-fillers` | Only apply `--script` / `--max-pause` |
+| `--captions srt\|vtt` | Also write captions timed to the edit |
+| `--burn-captions` | Burn word-highlighted captions into the video |
 | `-o out.mp4` | Output path (default `<input>.unsaid.mp4`, or `.m4a` for audio-only input) |
 | `--crf`, `--preset` | x264 quality and speed |
 
@@ -103,7 +116,7 @@ The GIF at the top is drawn by `scripts/make_demo_gif.py` from a real `unsaid cu
 - [x] Browser editor: `unsaid edit talk.mp4` opens the transcript, and striking text cuts the video live
 - [x] Agent skill: `SKILL.md`, so Claude Code, Codex or Cursor can make the edit ("cut this to a 60-second highlight")
 - [ ] MCP server, for agents that prefer tools to a CLI
-- [ ] Captions: SRT/VTT export retimed to the edit, plus animated burned-in captions for Shorts and Reels
+- [x] Captions: SRT/VTT export retimed to the edit, plus burned-in captions with the spoken word highlighted
 - [ ] FCPXML/EDL export for Resolve, Premiere and Final Cut
 - [ ] Stutter and repeated-word removal ("I I think")
 - [ ] Overdub with a local voice clone, and "studio sound" cleanup
